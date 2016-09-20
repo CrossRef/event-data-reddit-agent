@@ -47,6 +47,7 @@
 
 (defn seen!
   [url reddit-id]
+  (c/send-heartbeat "newsfeed-agent/process/mark-seen" 1)
   (k/exec-raw ["INSERT IGNORE INTO seen_reddit_item (url, reddit_id, seen) VALUES (?,?,?)" [url reddit-id (coerce/to-sql-time (clj-time/now))]]))
 
 ; Auth
@@ -54,6 +55,7 @@
 (defn fetch-reddit-token
   "Fetch a new Reddit token."
   []
+  (c/send-heartbeat "newsfeed-agent/reddit/authenticate" 1)
   (let [response @(http/post
                     "https://www.reddit.com/api/v1/access_token"
                      {:as :text
@@ -111,6 +113,7 @@
 (defn fetch-page
   "Fetch the API result, return the URL used and the data"
   [domain after-token]
+  (c/send-heartbeat "newsfeed-agent/reddit/fetch-page" 1)
   (let [url (str "https://oauth.reddit.com/domain/" domain "/new.json?sort=new&after=" after-token)
         _ (log/info "Fetch" url)
         result @(http/get url {:headers {"User-Agent" user-agent
@@ -236,14 +239,17 @@
   "Check all domains for unseen links."
   [artifacts send-evidence-callback]
   (log/info "Start crawl all Domains on Reddit at" (str (clj-time/now)))
+  (c/send-heartbeat "newsfeed-agent/process/scan-domains" 1)
   (let [[domain-list-url domain-list-f] (get artifacts "domain-list")]
     (with-open [domain-reader (reader domain-list-f)]
       (let [domains (line-seq domain-reader)
             evidence-records (map (partial evidence-for-domain domain-list-url) domains)]
         (doseq [er evidence-records]
           (send-evidence-callback er)
+          (c/send-heartbeat "newsfeed-agent/process/found-doi" (count (:deposits er)))
           (doseq [item (-> er :processing :interested-items)]
-            (seen! (:url item) (:id item))))))))
+            (seen! (:url item) (:id item)))))))
+  (c/send-heartbeat "newsfeed-agent/process/finish-scan-domains" 1))
 
 (def agent-definition
   {:agent-name "reddit-agent"
