@@ -16,7 +16,7 @@
   (:gen-class))
 
 (def source-token "a6c9d511-9239-4de8-a266-b013f5bd8764")
-(def version "0.1.2")
+(def version "0.1.3")
 (def user-agent "CrossrefEventDataBot (eventdata@crossref.org) (by /u/crossref-bot labs@crossref.org)")
 
 ; Auth
@@ -153,7 +153,7 @@
             package {:source-token source-token
                      :source-id "reddit"
                      :agent {:version version :artifacts {:domain-set-artifact-version domain-list-url}}
-                     :extra {:cutoff-date (str cutoff-date)}
+                     :extra {:cutoff-date (str cutoff-date) :queried-domain domain}
                      :pages pages}]
         (log/info "Sending package...")
         (>!! bundle-chan package))))
