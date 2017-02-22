@@ -16,7 +16,7 @@
   (:gen-class))
 
 (def source-token "a6c9d511-9239-4de8-a266-b013f5bd8764")
-(def version "0.1.3")
+(def version "0.1.4")
 (def user-agent "CrossrefEventDataBot (eventdata@crossref.org) (by /u/crossref-bot labs@crossref.org)")
 
 ; Auth
@@ -77,8 +77,7 @@
 (defn api-item-to-action
   [item]
   (let [occurred-at-iso8601 (str (coerce/from-long (* 1000 (long (-> item :data :created_utc)))))]
-    {:type (get work-types (:kind item) "unknown")
-     :id (DigestUtils/sha1Hex ^String (str "reddit-" (-> item :data :id)))
+    {:id (DigestUtils/sha1Hex ^String (str "reddit-" (-> item :data :id)))
      :url (str "https://reddit.com" (-> item :data :permalink))
      :relation-type-id "discusses"
      :occurred-at occurred-at-iso8601
@@ -86,6 +85,7 @@
      :extra {
       :subreddit (-> item :data :subreddit)}
      :subj {
+      :type (get work-types (:kind item) "unknown")
       :title (-> item :data :title)
       :issued occurred-at-iso8601}}))
 

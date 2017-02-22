@@ -7,10 +7,8 @@ services:
      - ./.m2-cache:/root/.m2
     environment:
      - JWT_SECRETS=TEST,TEST2
-     - EVIDENCE_STORAGE=memory
      - ARTIFACT_BASE=http://event-data-artifact-prod.s3.amazonaws.com
      - STATUS_SERVICE=http://status.eventdata.crossref.org
-     - EVENT_BUS_URL_BASE=https://bus.eventdata.crossref.org
      - REDDIT_APP_NAME=$REDDIT_APP_NAME
      - REDDIT_PASSWORD=$REDDIT_PASSWORD
      - REDDIT_CLIENT=$REDDIT_CLIENT

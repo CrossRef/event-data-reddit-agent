@@ -1,4 +1,4 @@
-(defproject event-data-reddit-agent "0.1.3"
+(defproject event-data-reddit-agent "0.1.4"
   :description "Crossref Event Data Reddit.com Agent"
   :url "http://eventdata.crossref.org"
   :license {:name "The MIT License (MIT)"
