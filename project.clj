@@ -1,4 +1,4 @@
-(defproject event-data-reddit-agent "0.1.4"
+(defproject event-data-reddit-agent "0.1.5"
   :description "Crossref Event Data Reddit.com Agent"
   :url "http://eventdata.crossref.org"
   :license {:name "The MIT License (MIT)"
@@ -9,7 +9,8 @@
                  [throttler "1.0.0"]
                  [http-kit "2.1.18"]
                  [org.clojure/java.jdbc "0.4.2"]
-                 [commons-codec/commons-codec "1.10"]]
+                 [commons-codec/commons-codec "1.10"]
+                 [robert/bruce "0.8.0"]]
   :main ^:skip-aot event-data-reddit-agent.core
   :target-path "target/%s"
   :profiles {:uberjar {:aot :all}

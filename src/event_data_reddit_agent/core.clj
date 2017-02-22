@@ -10,13 +10,14 @@
             [throttler.core :refer [throttle-fn]]
             [org.httpkit.client :as http]
             [config.core :refer [env]]
-            [clojure.core.async :refer [>!!]])
+            [clojure.core.async :refer [>!!]]
+            [robert.bruce :refer [try-try-again]])
   (:import [java.util UUID]
            [org.apache.commons.codec.digest DigestUtils])
   (:gen-class))
 
 (def source-token "a6c9d511-9239-4de8-a266-b013f5bd8764")
-(def version "0.1.4")
+(def version "0.1.5")
 (def user-agent "CrossrefEventDataBot (eventdata@crossref.org) (by /u/crossref-bot labs@crossref.org)")
 
 ; Auth
@@ -105,11 +106,26 @@
   "Fetch the API result, return a page of Actions."
   [domain after-token]
   (status/send! "reddit-agent" "reddit" "fetch-page" 1)
-  (let [url (str "https://oauth.reddit.com/domain/" domain "/new.json?sort=new&after=" after-token)
-        result @(http/get url {:headers {"User-Agent" user-agent
-                                         "Authorization" (str "bearer " (get-reddit-token))}})]
-    (log/info "Fetched" url)
-    (parse-page url (:body result))))
+  (let [url (str "https://oauth.reddit.com/domain/" domain "/new.json?sort=new&after=" after-token)]
+    ; If the API returns an error 
+    (try
+      (try-try-again
+        {:sleep 30000 :tries 10}
+        #(let [result @(http/get url {:headers {"User-Agent" user-agent
+                                               "Authorization" (str "bearer " (get-reddit-token))}})]
+          (log/info "Fetched" url)
+          
+          (when-not (= (:status result) 200)
+            (log/error "Unexpected status returned from " url ":" (:status result))
+            (log/error "Body of error response:" (:body url))
+            (throw (new Exception "Bad error message")))
+
+          (parse-page url (:body result))))
+      (catch Exception ex (do
+        (log/error "Error fetching" url)
+        (log/error "Exception:" ex)
+        {:url url :actions [] :extra {:after nil :before nil :error "Failed to retrieve page"}})))))
+
 
 (def fetch-page-throttled (throttle-fn fetch-page 30 :minute))
 
