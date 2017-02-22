@@ -8,3 +8,6 @@ pom.xml.asc
 /.lein-*
 /.nrepl-port
 config
+.env
+.m2-cache
+.DS_Store
