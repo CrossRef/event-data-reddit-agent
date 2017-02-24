@@ -24,7 +24,7 @@ To run as an agent, `lein run`. To update the rules in Gnip, which should be one
 
 ## Demo
 
-    time docker-compose -f docker-compose-demo.yml run -w /usr/src/app test lein repl
+    time docker-compose -f docker-compose-unit-tests.yml run -w /usr/src/app test lein repl
 
 ## Config
 
