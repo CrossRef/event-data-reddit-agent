@@ -12,7 +12,7 @@ To run as an agent, `lein run`. To update the rules in Gnip, which should be one
 
 ## Tests
 
-    time docker-compose run -w /usr/src/app test lein test :unit
+    time docker-compose -f docker-compose-unit-tests.yml run -w /usr/src/app test lein test :unit
 
 ## Tests
 

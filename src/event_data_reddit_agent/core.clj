@@ -8,7 +8,7 @@
             [clj-time.coerce :as coerce]
             [clj-time.core :as clj-time]
             [throttler.core :refer [throttle-fn]]
-            [org.httpkit.client :as http]
+            [clj-http.client :as client]
             [config.core :refer [env]]
             [clojure.core.async :refer [>!!]]
             [robert.bruce :refer [try-try-again]])
@@ -26,14 +26,15 @@
   "Fetch a new Reddit token."
   []
   (status/send! "reddit-agent" "reddit" "authenticate" 1)
-  (let [response @(http/post
+  (let [response (client/post
                     "https://www.reddit.com/api/v1/access_token"
                      {:as :text
                       :headers {"User-Agent" user-agent}
                       :form-params {"grant_type" "password"
                                     "username" (:reddit-app-name env)
                                     "password" (:reddit-password env)}
-                      :basic-auth [(:reddit-client env) (:reddit-secret env)]})
+                      :basic-auth [(:reddit-client env) (:reddit-secret env)]
+                      :throw-exceptions false})
         token (when-let [body (:body response)]
                 (->
                   (json/read-str body :key-fn keyword)
@@ -44,10 +45,10 @@
   "Check the current Reddit token. Return if it works."
   []
   (let [token @reddit-token
-        result (-> "https://oauth.reddit.com/api/v1/me"
-                 (http/get {:headers {"User-Agent" user-agent
-                            "Authorization" (str "bearer " token)}})
-        deref)]
+        result (client/get "https://oauth.reddit.com/api/v1/me"
+                         {:headers {"User-Agent" user-agent
+                                    "Authorization" (str "bearer " token)}
+                          :throw-exceptions false})]
       (if-not (= (:status result) 200)
         (log/error "Couldn't verify OAuth Token" token " got " result)
         token)))
@@ -57,6 +58,7 @@
   []
   (log/info "Checking token")
   (let [valid-token (check-reddit-token)]
+    (log/info "Token result" valid-token)
    (if valid-token
     valid-token
     (do
@@ -117,7 +119,7 @@
     (try
       (try-try-again
         {:sleep 30000 :tries 10}
-        #(let [result @(http/get url {:headers {"User-Agent" user-agent
+        #(let [result (client/get url {:headers {"User-Agent" user-agent
                                                "Authorization" (str "bearer " (get-reddit-token))}})]
           (log/info "Fetched" url)
 
