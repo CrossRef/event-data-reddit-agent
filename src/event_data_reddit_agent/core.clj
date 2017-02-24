@@ -1,11 +1,11 @@
 (ns event-data-reddit-agent.core
   (:require [org.crossref.event-data-agent-framework.core :as c]
             [event-data-common.status :as status]
-            [crossref.util.doi :as cr-doi])
-  (:require [clojure.tools.logging :as log]
+            [crossref.util.doi :as cr-doi]
+            [clojure.tools.logging :as log]
             [clojure.java.io :refer [reader]]
-            [clojure.data.json :as json])
-  (:require [clj-time.coerce :as coerce]
+            [clojure.data.json :as json]
+            [clj-time.coerce :as coerce]
             [clj-time.core :as clj-time]
             [throttler.core :refer [throttle-fn]]
             [org.httpkit.client :as http]
@@ -17,7 +17,7 @@
   (:gen-class))
 
 (def source-token "a6c9d511-9239-4de8-a266-b013f5bd8764")
-(def version "0.1.5")
+(def version "0.1.6")
 (def user-agent "CrossrefEventDataBot (eventdata@crossref.org) (by /u/crossref-bot labs@crossref.org)")
 
 ; Auth
@@ -43,23 +43,25 @@
 (defn check-reddit-token
   "Check the current Reddit token. Return if it works."
   []
-  (let [token @reddit-token]
-    (-> "https://oauth.reddit.com/api/v1/me"
-        (http/get {:headers {"User-Agent" user-agent
-                             "Authorization" (str "bearer " token)}})
-        deref
-        :status
-        (when (= 200)
-          token))))
-      
+  (let [token @reddit-token
+        result (-> "https://oauth.reddit.com/api/v1/me"
+                 (http/get {:headers {"User-Agent" user-agent
+                            "Authorization" (str "bearer " token)}})
+        deref)]
+      (if-not (= (:status result) 200)
+        (log/error "Couldn't verify OAuth Token" token " got " result)
+        token)))
+
 (defn get-reddit-token
   "Return valid token. Fetch new one if necessary."
   []
-  (if-let [valid-token (check-reddit-token)]
+  (log/info "Checking token")
+  (let [valid-token (check-reddit-token)]
+   (if valid-token
     valid-token
     (do
       (reset! reddit-token (fetch-reddit-token))
-      (check-reddit-token))))
+      (check-reddit-token)))))
 
 ; https://www.reddit.com/dev/api/
 (def work-types
@@ -101,44 +103,57 @@
       :before (-> parsed :data :before)}
      :actions (map api-item-to-action (-> parsed :data :children))}))
 
+(def auth-sleep-duration
+  "Back off for a bit if we face an auth problem"
+  ; 5 mins
+  (* 1000 60 5))
 
 (defn fetch-page
   "Fetch the API result, return a page of Actions."
   [domain after-token]
   (status/send! "reddit-agent" "reddit" "fetch-page" 1)
   (let [url (str "https://oauth.reddit.com/domain/" domain "/new.json?sort=new&after=" after-token)]
-    ; If the API returns an error 
+    ; If the API returns an error
     (try
       (try-try-again
         {:sleep 30000 :tries 10}
         #(let [result @(http/get url {:headers {"User-Agent" user-agent
                                                "Authorization" (str "bearer " (get-reddit-token))}})]
           (log/info "Fetched" url)
-          
-          (when-not (= (:status result) 200)
-            (log/error "Unexpected status returned from " url ":" (:status result))
-            (log/error "Body of error response:" (:body url))
-            (throw (new Exception "Bad error message")))
 
-          (parse-page url (:body result))))
+          (condp = (:status result)
+            200 (parse-page url (:body result))
+            404 {:url url :actions [] :extra {:after nil :before nil :error "Result not found"}}
+            401 (do
+                  (log/error "Unauthorized to access" url)
+                  (log/error "Body of error response:" (:body url))
+                  (log/info "Taking a nap...")
+                  (Thread/sleep auth-sleep-duration)
+                  (log/info "Woken up!")
+                  (throw (new Exception "Unauthorized")))
+            (do
+              (log/error "Unexpected status code" (:status result) "from" url)
+              (log/error "Body of error response:" (:body url))
+              (throw (new Exception "Unexpected status"))))))
+
       (catch Exception ex (do
         (log/error "Error fetching" url)
         (log/error "Exception:" ex)
         {:url url :actions [] :extra {:after nil :before nil :error "Failed to retrieve page"}})))))
 
 
-(def fetch-page-throttled (throttle-fn fetch-page 30 :minute))
+(def fetch-page-throttled (throttle-fn fetch-page 20 :minute))
 
 (defn fetch-pages
   "Lazy sequence of pages for the domain."
   ([domain]
     (fetch-pages domain nil))
-  
+
   ([domain after-token]
     (let [result (fetch-page-throttled domain after-token)
           ; Token for next page. If this is null then we've reached the end of the iteration.
           after-token (-> result :extra :after)]
-      
+
       (if after-token
         (lazy-seq (cons result (fetch-pages domain after-token)))
         [result]))))
@@ -162,9 +177,12 @@
   (let [[domain-list-url domain-list] (get artifacts "domain-list")
         domains (clojure.string/split domain-list #"\n")
         ; Take 5 hours worth of pages to make sure we cover everything. The Percolator will dedupe.
-        cutoff-date (-> 6 clj-time/hours clj-time/ago)]
+        num-domains (count domains)
+        counter (atom 0)
+        cutoff-date (->  12  clj-time/hours clj-time/ago)]
     (doseq [domain domains]
-      (log/info "Query for domain:" domain)
+      (swap! counter inc)
+      (log/info "Query for domain:" domain @counter "/" num-domains " = " (int (* 100 (/ @counter num-domains))) "%")
       (let [pages (fetch-parsed-pages-after domain cutoff-date)
             package {:source-token source-token
                      :source-id "reddit"
@@ -187,4 +205,3 @@
 
 (defn -main [& args]
   (c/run agent-definition))
-
