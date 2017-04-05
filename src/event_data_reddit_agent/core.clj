@@ -11,14 +11,19 @@
             [clj-http.client :as client]
             [config.core :refer [env]]
             [clojure.core.async :refer [>!!]]
-            [robert.bruce :refer [try-try-again]])
+            [robert.bruce :refer [try-try-again]]
+            [clj-time.format :as clj-time-format])
   (:import [java.util UUID]
            [org.apache.commons.codec.digest DigestUtils])
   (:gen-class))
 
 (def source-token "a6c9d511-9239-4de8-a266-b013f5bd8764")
-(def version "0.1.6")
 (def user-agent "CrossrefEventDataBot (eventdata@crossref.org) (by /u/crossref-bot labs@crossref.org)")
+(def license "https://creativecommons.org/publicdomain/zero/1.0/")
+(def version (System/getProperty "event-data-reddit-agent.version"))
+
+(def date-format
+  (:date-time-no-ms clj-time-format/formatters))
 
 ; Auth
 (def reddit-token (atom nil))
@@ -81,7 +86,7 @@
 
 (defn api-item-to-action
   [item]
-  (let [occurred-at-iso8601 (str (coerce/from-long (* 1000 (long (-> item :data :created_utc)))))]
+  (let [occurred-at-iso8601 (clj-time-format/unparse date-format (coerce/from-long (* 1000 (long (-> item :data :created_utc)))))]
     {:id (DigestUtils/sha1Hex ^String (str "reddit-" (-> item :data :id)))
      :url (str "https://reddit.com" (-> item :data :permalink))
      :relation-type-id "discusses"
@@ -188,6 +193,7 @@
       (let [pages (fetch-parsed-pages-after domain cutoff-date)
             package {:source-token source-token
                      :source-id "reddit"
+                     :license license
                      :agent {:version version :artifacts {:domain-set-artifact-version domain-list-url}}
                      :extra {:cutoff-date (str cutoff-date) :queried-domain domain}
                      :pages pages}]
