@@ -10,7 +10,6 @@
             [throttler.core :refer [throttle-fn]]
             [clj-http.client :as client]
             [config.core :refer [env]]
-            [clojure.core.async :refer [>!!]]
             [robert.bruce :refer [try-try-again]]
             [clj-time.format :as clj-time-format])
   (:import [java.util UUID]
@@ -55,7 +54,7 @@
                                     "Authorization" (str "bearer " token)}
                           :throw-exceptions false})]
       (if-not (= (:status result) 200)
-        (log/error "Couldn't verify OAuth Token" token " got " result)
+        (log/info "Couldn't verify OAuth Token" token " got " result)
         token)))
 
 (defn get-reddit-token
@@ -178,7 +177,7 @@
 
 (defn check-all-domains
   "Check all domains for unseen links."
-  [artifacts bundle-chan]
+  [artifacts callback]
   (log/info "Start crawl all Domains on Reddit at" (str (clj-time/now)))
   (status/send! "reddit-agent" "process" "scan-domains" 1)
   (let [[domain-list-url domain-list] (get artifacts "domain-list")
@@ -198,12 +197,13 @@
                      :extra {:cutoff-date (str cutoff-date) :queried-domain domain}
                      :pages pages}]
         (log/info "Sending package...")
-        (>!! bundle-chan package))))
+        (callback package))))
   (log/info "Finished scan."))
 
 (def agent-definition
   {:agent-name "reddit-agent"
    :version version
+   :jwt (:reddit-jwt env)
    :schedule [{:name "check-all-domains"
               :seconds 14400 ; wait four hours between scans
               :fixed-delay true
